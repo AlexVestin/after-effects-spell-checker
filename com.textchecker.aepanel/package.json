@@ -1,0 +1,10 @@
+{
+  "name": "com.textchecker.aepanel",
+  "version": "1.0.0",
+  "description": "After Effects CEP panel for checking typos and grammar in text layers",
+  "private": true,
+  "dependencies": {
+    "harper.js": "^0.18.0",
+    "typo-js": "^1.2.4"
+  }
+}

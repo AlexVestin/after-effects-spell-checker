@@ -1,0 +1,20 @@
+{
+	"mainEntryPointFilePath": "./dist/harper.d.ts",
+	"apiReport": {
+		"enabled": false
+	},
+	"docModel": {
+		"enabled": true
+	},
+	"dtsRollup": {
+		"enabled": false
+	},
+	"bundledPackages": ["wasm"],
+	"messages": {
+		"extractorMessageReporting": {
+			"ae-missing-release-tag": {
+				"logLevel": "none"
+			}
+		}
+	}
+}

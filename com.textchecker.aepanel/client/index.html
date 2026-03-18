@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Text Layer Checker</title>
+    <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+    <div id="app">
+        <header id="header">
+            <h1>Text Layer Checker</h1>
+            <div id="toolbar">
+                <button id="btn-scan" class="btn btn-primary" title="Scan all text layers in the active composition">
+                    Scan Text Layers
+                </button>
+                <button id="btn-scan-all" class="btn" title="Scan all compositions in the project">
+                    Scan All Comps
+                </button>
+                <button id="btn-settings" class="btn btn-icon" title="Settings">&#9881;</button>
+            </div>
+        </header>
+
+        <div id="status-bar">
+            <span id="status-text">Ready — open a composition and click Scan</span>
+        </div>
+
+        <div id="results-container">
+            <div id="empty-state">
+                <p>No results yet.</p>
+                <p class="hint">Open a composition with text layers and click <strong>Scan Text Layers</strong> to check for typos and grammar issues.</p>
+            </div>
+            <div id="results-list" style="display:none;"></div>
+        </div>
+
+        <div id="summary-bar" style="display:none;">
+            <span id="summary-text"></span>
+            <button id="btn-fix-all" class="btn btn-small btn-primary" style="display:none;">Fix All</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="btn-close" id="btn-close-settings">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>Custom Dictionary</label>
+                    <p class="hint">Add words that should not be flagged (one per line)</p>
+                    <textarea id="custom-dict" rows="6" placeholder="e.g.&#10;compositing&#10;keyframe&#10;rotoscope"></textarea>
+                </div>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="chk-ignore-caps" checked>
+                        Ignore ALL CAPS text
+                    </label>
+                </div>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="chk-ignore-short">
+                        Ignore layers with fewer than 3 words
+                    </label>
+                </div>
+                <div class="setting-group">
+                    <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/CSInterface.js"></script>
+    <script src="lib/themeManager.js"></script>
+    <script src="js/checker-bridge.js"></script>
+    <script src="js/results-renderer.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
