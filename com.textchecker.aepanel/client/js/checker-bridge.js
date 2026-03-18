@@ -11,15 +11,22 @@ var CheckerBridge = (function () {
         ignoreShortLayers: false
     };
 
+    /** Write to the in-panel log (if available) */
+    function log(msg, level) {
+        if (typeof Log !== "undefined" && Log[level || "info"]) {
+            Log[level || "info"]("[Bridge] " + msg);
+        }
+    }
+
     /**
      * Convert a file:// URI (as returned by csInterface.getSystemPath) to a
      * regular filesystem path that Node's require() can use.
      */
     function uriToPath(uri) {
-        var p = uri;
+        var p = String(uri || "");
+        log("uriToPath input: " + p);
         // Strip file:// prefix
         if (p.indexOf("file:///") === 0) {
-            // On macOS/Linux: file:///Users/... → /Users/...
             p = p.substring(7);
         } else if (p.indexOf("file://") === 0) {
             p = p.substring(7);
@@ -30,33 +37,67 @@ var CheckerBridge = (function () {
         if (/^\/[A-Za-z]:\//.test(p)) {
             p = p.substring(1);
         }
+        log("uriToPath output: " + p);
         return p;
+    }
+
+    /**
+     * Get the appropriate require function for the CEP Node.js context
+     */
+    function getNodeRequire() {
+        if (typeof cep_node !== "undefined" && cep_node.require) {
+            log("Using cep_node.require");
+            return cep_node.require;
+        }
+        if (typeof require === "function") {
+            log("Using global require");
+            return require;
+        }
+        return null;
     }
 
     /**
      * Initialize the grammar checking engine via Node.js
      */
     function init(extensionPath) {
+        log("init() called with extensionPath: " + extensionPath);
         return new Promise(function (resolve, reject) {
             try {
                 var fsPath = uriToPath(extensionPath);
                 var nodePath = fsPath + "/node/grammar-engine.js";
-                // In CEP, require is available through cep_node
-                var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
+                log("Attempting require: " + nodePath);
+
+                var nodeRequire = getNodeRequire();
+                if (!nodeRequire) {
+                    reject(new Error("No Node.js require available. cep_node=" +
+                        (typeof cep_node) + ", require=" + (typeof require)));
+                    return;
+                }
+
                 grammarEngine = nodeRequire(nodePath);
+                log("grammar-engine.js loaded OK", "ok");
+
+                log("Calling grammarEngine.init()...");
                 grammarEngine.init(fsPath).then(function () {
                     isReady = true;
+                    log("Harper.js initialized OK", "ok");
                     loadSettings(extensionPath);
                     resolve();
                 }).catch(function (err) {
-                    console.warn("[CheckerBridge] Grammar engine init failed, using fallback:", err);
+                    log("Harper init failed: " + err.message + " — trying fallback", "warn");
                     grammarEngine.initFallback(fsPath).then(function () {
                         isReady = true;
+                        log("Typo.js fallback initialized OK", "ok");
                         loadSettings(extensionPath);
                         resolve();
-                    }).catch(reject);
+                    }).catch(function (err2) {
+                        log("Fallback also failed: " + err2.message, "error");
+                        reject(err2);
+                    });
                 });
             } catch (e) {
+                log("init() threw: " + e.message, "error");
+                if (e.stack) log(e.stack, "error");
                 reject(e);
             }
         });
@@ -67,7 +108,8 @@ var CheckerBridge = (function () {
      */
     function loadSettings(extensionPath) {
         try {
-            var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
+            var nodeRequire = getNodeRequire();
+            if (!nodeRequire) { log("No require for settings load", "warn"); return; }
             var fs = nodeRequire("fs");
             var path = nodeRequire("path");
             var fsPath = uriToPath(extensionPath);
@@ -77,6 +119,7 @@ var CheckerBridge = (function () {
                 if (data.ignoreAllCaps !== undefined) settings.ignoreAllCaps = data.ignoreAllCaps;
                 if (data.ignoreShortLayers !== undefined) settings.ignoreShortLayers = data.ignoreShortLayers;
                 if (data.customWords) customWords = data.customWords;
+                log("Loaded settings.json", "ok");
             }
 
             var dictPath = path.join(fsPath, "dictionaries", "custom-words.txt");
@@ -85,9 +128,10 @@ var CheckerBridge = (function () {
                     return w.trim().length > 0;
                 });
                 customWords = customWords.concat(words);
+                log("Loaded " + words.length + " custom dictionary words", "ok");
             }
         } catch (e) {
-            console.log("[CheckerBridge] No saved settings found");
+            log("loadSettings failed: " + e.message, "warn");
         }
     }
 
@@ -96,7 +140,8 @@ var CheckerBridge = (function () {
      */
     function saveSettings(extensionPath, newSettings) {
         try {
-            var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
+            var nodeRequire = getNodeRequire();
+            if (!nodeRequire) { log("No require for settings save", "warn"); return; }
             var fs = nodeRequire("fs");
             var path = nodeRequire("path");
             var fsPath = uriToPath(extensionPath);
@@ -112,29 +157,26 @@ var CheckerBridge = (function () {
                 customWords: customWords
             }, null, 2));
 
-            // Also save custom words to the text file
             var dictPath = path.join(fsPath, "dictionaries", "custom-words.txt");
             fs.writeFileSync(dictPath, customWords.join("\n"));
+            log("Settings saved to disk", "ok");
         } catch (e) {
-            console.error("[CheckerBridge] Failed to save settings:", e);
+            log("saveSettings failed: " + e.message, "error");
         }
     }
 
     /**
      * Check a single text string for issues
-     * @returns Promise<Array<Issue>>
      */
     function checkText(text) {
         if (!isReady || !grammarEngine) {
             return Promise.reject(new Error("Grammar engine not initialized"));
         }
 
-        // Pre-filter: skip ALL CAPS if setting enabled
         if (settings.ignoreAllCaps && text === text.toUpperCase() && text.length > 0) {
             return Promise.resolve([]);
         }
 
-        // Pre-filter: skip short text if setting enabled
         if (settings.ignoreShortLayers) {
             var wordCount = text.trim().split(/\s+/).length;
             if (wordCount < 3) {
@@ -142,16 +184,12 @@ var CheckerBridge = (function () {
             }
         }
 
-        // Normalize AE line breaks (\r) to \n
         var normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
         return grammarEngine.check(normalizedText, customWords);
     }
 
     /**
      * Check multiple text layers
-     * @param layers Array of {index, name, text}
-     * @returns Promise<Array<{layer, issues}>>
      */
     function checkLayers(layers) {
         var promises = layers.map(function (layer) {
