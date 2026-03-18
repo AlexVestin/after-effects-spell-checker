@@ -12,22 +12,45 @@ var CheckerBridge = (function () {
     };
 
     /**
+     * Convert a file:// URI (as returned by csInterface.getSystemPath) to a
+     * regular filesystem path that Node's require() can use.
+     */
+    function uriToPath(uri) {
+        var p = uri;
+        // Strip file:// prefix
+        if (p.indexOf("file:///") === 0) {
+            // On macOS/Linux: file:///Users/... → /Users/...
+            p = p.substring(7);
+        } else if (p.indexOf("file://") === 0) {
+            p = p.substring(7);
+        }
+        // Decode percent-encoded characters (e.g. %20 → space)
+        p = decodeURIComponent(p);
+        // On Windows, paths may start with /C:/ — strip the leading slash
+        if (/^\/[A-Za-z]:\//.test(p)) {
+            p = p.substring(1);
+        }
+        return p;
+    }
+
+    /**
      * Initialize the grammar checking engine via Node.js
      */
     function init(extensionPath) {
         return new Promise(function (resolve, reject) {
             try {
-                var nodePath = extensionPath + "/node/grammar-engine.js";
+                var fsPath = uriToPath(extensionPath);
+                var nodePath = fsPath + "/node/grammar-engine.js";
                 // In CEP, require is available through cep_node
                 var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
                 grammarEngine = nodeRequire(nodePath);
-                grammarEngine.init(extensionPath).then(function () {
+                grammarEngine.init(fsPath).then(function () {
                     isReady = true;
                     loadSettings(extensionPath);
                     resolve();
                 }).catch(function (err) {
                     console.warn("[CheckerBridge] Grammar engine init failed, using fallback:", err);
-                    grammarEngine.initFallback(extensionPath).then(function () {
+                    grammarEngine.initFallback(fsPath).then(function () {
                         isReady = true;
                         loadSettings(extensionPath);
                         resolve();
@@ -47,7 +70,8 @@ var CheckerBridge = (function () {
             var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
             var fs = nodeRequire("fs");
             var path = nodeRequire("path");
-            var settingsPath = path.join(extensionPath, "dictionaries", "settings.json");
+            var fsPath = uriToPath(extensionPath);
+            var settingsPath = path.join(fsPath, "dictionaries", "settings.json");
             if (fs.existsSync(settingsPath)) {
                 var data = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
                 if (data.ignoreAllCaps !== undefined) settings.ignoreAllCaps = data.ignoreAllCaps;
@@ -55,7 +79,7 @@ var CheckerBridge = (function () {
                 if (data.customWords) customWords = data.customWords;
             }
 
-            var dictPath = path.join(extensionPath, "dictionaries", "custom-words.txt");
+            var dictPath = path.join(fsPath, "dictionaries", "custom-words.txt");
             if (fs.existsSync(dictPath)) {
                 var words = fs.readFileSync(dictPath, "utf8").split("\n").filter(function (w) {
                     return w.trim().length > 0;
@@ -75,7 +99,8 @@ var CheckerBridge = (function () {
             var nodeRequire = (typeof cep_node !== "undefined") ? cep_node.require : require;
             var fs = nodeRequire("fs");
             var path = nodeRequire("path");
-            var settingsPath = path.join(extensionPath, "dictionaries", "settings.json");
+            var fsPath = uriToPath(extensionPath);
+            var settingsPath = path.join(fsPath, "dictionaries", "settings.json");
 
             if (newSettings.ignoreAllCaps !== undefined) settings.ignoreAllCaps = newSettings.ignoreAllCaps;
             if (newSettings.ignoreShortLayers !== undefined) settings.ignoreShortLayers = newSettings.ignoreShortLayers;
@@ -88,7 +113,7 @@ var CheckerBridge = (function () {
             }, null, 2));
 
             // Also save custom words to the text file
-            var dictPath = path.join(extensionPath, "dictionaries", "custom-words.txt");
+            var dictPath = path.join(fsPath, "dictionaries", "custom-words.txt");
             fs.writeFileSync(dictPath, customWords.join("\n"));
         } catch (e) {
             console.error("[CheckerBridge] Failed to save settings:", e);
